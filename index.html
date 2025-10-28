@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Move Now Timer</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0d1117;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+        .timer-card {
+            max-width: 400px;
+            width: 100%;
+            background-color: #161b22;
+            border-radius: 1.5rem;
+            padding: 2rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            border: 1px solid #30363d;
+        }
+        .time-text {
+            font-size: 3.5rem;
+            font-weight: 800;
+            color: #58a6ff;
+            transition: all 0.3s ease-in-out;
+            margin-bottom: 0.5rem;
+        }
+        .status-text {
+            color: #8b949e;
+            font-weight: 500;
+            margin-top: -0.5rem;
+            font-size: 0.9rem;
+        }
+        .alert-active {
+            color: #f85149;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .action-button {
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .action-button:hover {
+            background-color: #4f46e5;
+            transform: translateY(-1px);
+        }
+        .action-button:active {
+            transform: translateY(1px);
+        }
+
+        @media (max-width: 640px) {
+            .time-text {
+                font-size: 3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="timerCard" class="timer-card">
+        <div id="timeDisplay" class="time-text">--</div>
+        <div id="statusDisplay" class="status-text">Next break in...</div>
+        
+        <!-- Break Activity Output Area -->
+        <div id="activityOutput" class="mt-4 p-3 bg-gray-800 text-gray-300 rounded-lg text-sm hidden">
+            <span class="font-bold text-indigo-400">Activity:</span> <span id="activityText"></span>
+        </div>
+
+        <!-- Generate Activity Button -->
+        <button id="generateActivityButton" 
+                class="action-button mt-4 w-full bg-indigo-600 text-white py-2 rounded-lg shadow-md font-semibold hidden disabled:opacity-50"
+                disabled>
+            ✨ Generate Break Idea
+        </button>
+
+        <!-- Manual Reset Button -->
+        <button id="resetButton" 
+                class="action-button mt-2 w-full bg-gray-600 text-white py-2 rounded-lg shadow-md font-semibold">
+            🔄 Reset Timer
+        </button>
+    </div>
+
+    <script>
+        // Simple break activities - no API needed!
+        const BREAK_ACTIVITIES = [
+            "Stand up and stretch your arms to the ceiling",
+            "Look away from screen and focus on distant object for 20 seconds",
+            "Rotate your shoulders forward and backward 5 times each",
+            "Slowly turn your head side to side 3 times",
+            "Take 3 deep breaths - inhale 4s, hold 4s, exhale 6s",
+            "Stand and do 5 calf raises",
+            "Close your eyes and count to 10 slowly",
+            "Gently roll your wrists in circles 5 times each direction",
+            "Stand and touch your toes (or try to!)",
+            "Do 5 neck tilts - ear toward shoulder each side"
+        ];
+
+        const INITIAL_TIME_SECONDS = 20 * 60; // 20 minutes
+        let timeLeft = INITIAL_TIME_SECONDS;
+        let timerInterval;
+
+        const timeDisplay = document.getElementById('timeDisplay');
+        const statusDisplay = document.getElementById('statusDisplay');
+        const generateActivityButton = document.getElementById('generateActivityButton');
+        const resetButton = document.getElementById('resetButton');
+        const activityOutput = document.getElementById('activityOutput');
+        const activityText = document.getElementById('activityText');
+
+        // Simple audio alert using Web Audio API (works on Android)
+        function playBeepAlert() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 1);
+                
+            } catch (error) {
+                // Fallback: Use browser alert if audio fails
+                console.log("Audio not supported, using visual alert only");
+            }
+        }
+
+        // Generate random break activity from local list
+        function generateBreakActivity() {
+            const randomActivity = BREAK_ACTIVITIES[Math.floor(Math.random() * BREAK_ACTIVITIES.length)];
+            activityText.textContent = randomActivity;
+            activityOutput.classList.remove('hidden');
+            
+            // Auto-hide after 30 seconds
+            setTimeout(() => {
+                activityOutput.classList.add('hidden');
+            }, 30000);
+        }
+
+        // Format time as MM:SS
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        // Update timer display
+        function updateTimer() {
+            if (timeLeft <= 0) {
+                // Time's up!
+                timeDisplay.textContent = "MOVE NOW!";
+                timeDisplay.classList.add('alert-active');
+                statusDisplay.textContent = "Time for a break!";
+                
+                // Show activity button
+                generateActivityButton.classList.remove('hidden');
+                generateActivityButton.disabled = false;
+                
+                // Play alert sound
+                playBeepAlert();
+                
+                // Stop timer
+                clearInterval(timerInterval);
+                return;
+            }
+
+            // Normal countdown
+            timeDisplay.textContent = formatTime(timeLeft);
+            timeDisplay.classList.remove('alert-active');
+            statusDisplay.textContent = "Next break in...";
+            
+            // Hide activity during countdown
+            generateActivityButton.classList.add('hidden');
+            activityOutput.classList.add('hidden');
+
+            timeLeft -= 1;
+        }
+
+        // Start/reset timer
+        function startTimer() {
+            timeLeft = INITIAL_TIME_SECONDS;
+            
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+            
+            updateTimer();
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        // Event listeners
+        generateActivityButton.addEventListener('click', generateBreakActivity);
+        resetButton.addEventListener('click', startTimer);
+
+        // Start on load
+        startTimer();
+
+        // Prevent phone from sleeping when timer is active
+        let wakeLock = null;
+        
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock is active');
+                }
+            } catch (err) {
+                console.log(`${err.name}, ${err.message}`);
+            }
+        }
+        
+        // Request wake lock when page becomes visible
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                requestWakeLock();
+            }
+        });
+        
+        requestWakeLock();
+
+    </script>
+</body>
+</html>
